@@ -54,7 +54,8 @@ Library
     amqp                >= 0.10    && < 0.11,
     bytestring          >= 0.9     && < 11,
     lens                >= 4       && < 5,
-    transformers        >= 0.4     && < 0.5,
+    transformers        >= 0.2,
+    transformers-compat,
     configurator        >= 0.3     && < 0.4,
     network             >= 2.5     && < 2.7,
     mtl                 >= 2       && < 3

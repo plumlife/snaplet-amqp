@@ -38,31 +38,18 @@ class MonadIO m => HasAmqpPool m where
 instance HasAmqpPool (Handler b AmqpState) where
   getAmqpPool = liftIO . readIORef =<< gets amqpPoolRef
 
-instance MonadIO m => HasAmqpPool (ReaderT AmqpState m) where
-  getAmqpPool = liftIO . readIORef =<< liftM amqpPoolRef ask
+instance MonadIO m => HasAmqpPool (ReaderT AmqpPool m) where
+  getAmqpPool = ask
 
 --------------------------------------------------------------------------------
 
 -- | Initialize the AMQP Snaplet.
 initAMQP :: SnapletInit b AmqpState
 initAMQP = makeSnaplet "amqp" description datadir $ do
-  conf  <- getSnapletUserConfig
-  host  <- liftIO $ require conf "host"
-  port  <- liftIO $ require conf "port"
-  vhost <- liftIO $ require conf "vhost"
-  login <- liftIO $ require conf "login"
-  pass  <- liftIO $ require conf "password"
-
-  let connOpts = defaultConnectionOpts
-                 { coServers        = [(host, fromInteger port)]
-                 , coVHost          = vhost
-                 , coAuth           = [plain login pass]
-                 , coHeartbeatDelay = Just 1
-                 }
-
-  rhalt <- liftIO $ newIORef False
-  rmc   <- liftIO $ newIORef Nothing
-  rp    <- mkAmqpPool connOpts rhalt rmc Nothing
+  connOpts <- getConnOpts
+  rhalt    <- liftIO $ newIORef False   -- Not in halt state
+  rmc      <- liftIO $ newIORef Nothing -- No connection yet
+  rp       <- mkAmqpPool connOpts rhalt rmc Nothing
 
   onUnload $ do
     atomicWriteIORef rhalt True
@@ -72,8 +59,29 @@ initAMQP = makeSnaplet "amqp" description datadir $ do
 
   where
     description = "Snaplet for AMQP library"
-    datadir = Just $ liftM (++"/resources/amqp") getDataDir
-
+    datadir     = Just $ liftM (++"/resources/amqp") getDataDir
+    getConnOpts = do
+      conf <- getSnapletUserConfig
+      liftIO $ do
+        host  <- require conf "host"
+        port  <- require conf "port"
+        vhost <- require conf "vhost"
+        login <- require conf "login"
+        pass  <- require conf "password"
+        return $
+          defaultConnectionOpts
+            { coServers        = [(host, fromInteger port)]
+            , coVHost          = vhost
+            , coAuth           = [plain login pass]
+            , coHeartbeatDelay = Just 1
+            }
+      
+-- | Establish an AMQP connection and channel pool using the given connection
+-- options, attempting to re-establish the connection whenever it dies unless
+-- the 'IORef Bool' parameter indicates a halting state. Passing Nothing for the
+-- 4th parameter indicates that this is the toplevel invocation and that a
+-- channel pool does not yet exist; the Just-wrapped invocation is used by the
+-- function internally.
 mkAmqpPool :: MonadIO m
            => ConnectionOpts           -- ^ How we should connect to AMQP
            -> IORef Bool               -- ^ Halting? (prevents reconnection)
@@ -123,3 +131,4 @@ notice = putStrLn . ("snaplet-amqp: " ++)
 -- | Runs an AMQP action in any monad with a HasAmqpPool instance.
 runAmqp :: HasAmqpPool m => (Channel -> IO ()) -> m ()
 runAmqp action = getAmqpPool >>= \p -> liftIO $! withResource p $! (action $!)
+                 

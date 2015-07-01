@@ -164,5 +164,5 @@ initAMQP = makeSnaplet "amqp" description datadir $ do
 --------------------------------------------------------------------------------
 
 -- | Runs an AMQP action in any monad with a HasAmqpPool instance.
-runAmqp :: HasAmqpPool m => (Channel -> IO ()) -> m ()
+runAmqp :: HasAmqpPool m => (Channel -> IO a) -> m a
 runAmqp action = getAmqpPool >>= \p -> liftIO $! withResource p $! (action $!)
